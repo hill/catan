@@ -108,7 +108,7 @@ class BoardGame {
   private width: number;
   private height: number;
   private tiles: ResourceTile[];
-  private mousePosition: { x: number; y: number } | null = null;
+  private mouse: { x: number; y: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.assetManager = new AssetManager();
@@ -128,15 +128,15 @@ class BoardGame {
 
     this.canvas.addEventListener("mousemove", (event) => {
       const rect = this.canvas.getBoundingClientRect();
-      this.mousePosition = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
+      this.mouse = {
+        x: event.clientX - rect.left - this.width / 2, // transform to center of canvas
+        y: event.clientY - rect.top - this.height / 2,
       };
       this.drawBoard();
     });
 
     this.canvas.addEventListener("mouseleave", () => {
-      this.mousePosition = null;
+      this.mouse = null;
       this.drawBoard();
     });
 
@@ -171,13 +171,10 @@ class BoardGame {
 
   private drawBoard() {
     this.drawBackground();
+    this.ctx.save();
+    this.ctx.translate(this.width / 2, this.height / 2); // Translate to the center
 
-    const mouseOverTile =
-      this.mousePosition &&
-      this.findTileAt(
-        this.mousePosition.x - this.width / 2,
-        this.mousePosition.y - this.height / 2
-      );
+    const mouseOverTile = this.mouse && this.findTileAt(this.mouse.x, this.mouse.y);
     this.tiles.forEach((tile) => {
       const [x, y] = tile.get2DCoords();
       // const asset = this.assetManager.getAsset(`${tile.resource}tile`);
@@ -191,7 +188,7 @@ class BoardGame {
         desert: "#F5DEB3",
       };
 
-      drawHexagon(this.ctx, this.width / 2 + x, this.height / 2 + y, HEX_SIZE, {
+      drawHexagon(this.ctx, x, y, HEX_SIZE, {
         fill: colorMap[tile.resource] + (highlight ? "CC" : "FF"),
       });
       // draw some text in the middle of the hexagon with coordinates
@@ -199,12 +196,9 @@ class BoardGame {
       this.ctx.font = "12px sans-serif";
       this.ctx.textAlign = "center";
       this.ctx.textBaseline = "middle";
-      this.ctx.fillText(
-        `${tile.number}: ${tile.getCoords()}`,
-        this.width / 2 + x,
-        this.height / 2 + y
-      );
+      this.ctx.fillText(`${tile.number}: ${tile.getCoords()}`, x, y);
     });
+    this.ctx.restore();
   }
 
   private drawBackground() {
