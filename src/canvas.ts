@@ -1,19 +1,44 @@
 const resources = ["wood", "brick", "sheep", "wheat", "ore", "desert"] as const;
 type Resource = (typeof resources)[number];
 
-class HexTile {
-  private resource: Resource;
-  private number: number;
-  private cubeCoords: { x: number; y: number; z: number };
+const HEX_SIZE = 70;
 
-  constructor(resource: Resource, number: number, x: number, y: number, z: number) {
-    this.resource = resource;
-    this.number = number;
-    this.cubeCoords = { x, y, z };
+function get_hex_coords(x: number, y: number, size: number) {
+  const q = ((Math.sqrt(3) / 3) * x + (-1 / 3) * y) / size;
+  const r = ((2 / 3) * y) / size;
+  return { q, r };
+}
+
+class PointyHexTile {
+  private cubeCoords: { q: number; r: number; s: number };
+  private size: number;
+
+  constructor(q: number, r: number, s: number, size = HEX_SIZE) {
+    this.cubeCoords = { q, r, s };
+    this.size = size;
   }
 
   public getCoords() {
-    return this.cubeCoords;
+    return [this.cubeCoords.q, this.cubeCoords.r, this.cubeCoords.s];
+  }
+
+  public get2DCoords() {
+    // https://www.redblobgames.com/grids/hexagons/#hex-to-pixel-axial
+    const { q, r } = this.cubeCoords;
+    const x = this.size * (Math.sqrt(3) * q + (Math.sqrt(3) / 2) * r);
+    const y = this.size * ((3 / 2) * r);
+    return [x, y];
+  }
+}
+
+class ResourceTile extends PointyHexTile {
+  public resource: Resource;
+  public number: number;
+
+  constructor(resource: Resource, number: number, q: number, r: number, s: number) {
+    super(q, r, s);
+    this.resource = resource;
+    this.number = number;
   }
 }
 
@@ -51,6 +76,7 @@ class BoardGame {
   private ctx: CanvasRenderingContext2D;
   private width: number;
   private height: number;
+  private tiles: ResourceTile[];
 
   constructor(canvas: HTMLCanvasElement) {
     this.assetManager = new AssetManager();
@@ -60,6 +86,7 @@ class BoardGame {
     const dpr = window.devicePixelRatio || 1;
     this.width = canvas.width / dpr;
     this.height = canvas.height / dpr;
+    this.tiles = this.createGrid();
 
     this.initializeGame();
   }
@@ -69,34 +96,64 @@ class BoardGame {
     this.drawBoard();
   }
 
+  private createGrid() {
+    const tiles: ResourceTile[] = [];
+
+    // stare hard at the diagram here: https://www.redblobgames.com/grids/hexagons/#coordinates-cube
+    for (let r = -2; r <= 2; r++) {
+      for (let q = -2; q <= 2; q++) {
+        const s = -q - r;
+        if (Math.abs(s) <= 2) {
+          const resource = this.getRandomResource();
+          const number = this.getRandomNumber();
+          tiles.push(new ResourceTile(resource, number, q, r, s));
+        }
+      }
+    }
+
+    return tiles;
+  }
+
+  private getRandomResource() {
+    const randomResource = Math.floor(Math.random() * resources.length);
+    return resources[randomResource];
+  }
+
+  private getRandomNumber() {
+    return Math.floor(Math.random() * 11) + 2;
+  }
+
   private drawBoard() {
     this.drawBackground();
-    const hexsize = 50;
-    const startY = this.height / 6;
-    const startX = this.width / 2;
-    const boardLayout = [3, 4, 5, 4, 3];
-    const hexWidth = hexsize * 2;
-    const hexHeight = Math.sqrt(3) * hexsize;
-    const verticalSpacing = hexHeight;
-
-    let currentY = startY;
-    for (let row = 0; row < boardLayout.length; row++) {
-      const hexagonsInRow = boardLayout[row];
-      const rowWidth = hexWidth * hexagonsInRow;
-      let currentX = startX - rowWidth / 2 + hexsize; // Centering each row
-
-      for (let col = 0; col < hexagonsInRow; col++) {
-        const randomResource = Math.floor(Math.random() * resources.length);
-        const asset = this.assetManager.getAsset(`${resources[randomResource]}tile`);
-        drawHexagon(this.ctx, currentX, currentY, hexsize, asset);
-        currentX += hexWidth;
-      }
-      currentY += verticalSpacing;
-    }
+    [...this.tiles].forEach((tile) => {
+      const [x, y] = tile.get2DCoords();
+      // const asset = this.assetManager.getAsset(`${tile.resource}tile`);
+      const colorMap = {
+        wood: "brown",
+        brick: "red",
+        sheep: "green",
+        wheat: "yellow",
+        ore: "grey",
+        desert: "orange",
+      };
+      drawHexagon(this.ctx, this.width / 2 + x, this.height / 2 + y, HEX_SIZE, {
+        fill: colorMap[tile.resource],
+      });
+      // draw some text in the middle of the hexagon with coordinates
+      this.ctx.fillStyle = "black";
+      this.ctx.font = "12px sans-serif";
+      this.ctx.textAlign = "center";
+      this.ctx.textBaseline = "middle";
+      this.ctx.fillText(
+        `${tile.number}: ${tile.getCoords()}`,
+        this.width / 2 + x,
+        this.height / 2 + y
+      );
+    });
   }
 
   private drawBackground() {
-    this.ctx.fillStyle = "black";
+    this.ctx.fillStyle = "lightblue";
     this.ctx.fillRect(0, 0, this.width, this.height);
   }
 
@@ -117,7 +174,15 @@ function drawHexagon(
   x: number,
   y: number,
   size: number,
-  asset?: HTMLImageElement
+  {
+    stroke = "black",
+    fill = "white",
+    asset,
+  }: {
+    stroke?: string;
+    fill?: string;
+    asset?: HTMLImageElement;
+  }
 ) {
   ctx.beginPath();
   for (let side = 0; side < 7; side++) {
@@ -132,7 +197,8 @@ function drawHexagon(
     }
   }
   ctx.closePath();
-  ctx.fillStyle = "white";
+  ctx.strokeStyle = stroke;
+  ctx.fillStyle = fill;
   ctx.fill();
   if (asset) {
     ctx.save();
@@ -163,5 +229,7 @@ function setupCanvas(canvas: HTMLCanvasElement) {
 
 export function init() {
   const canvas = document.querySelector<HTMLCanvasElement>("#gameCanvas")!;
+  canvas.height = window.innerHeight;
+  canvas.width = window.innerWidth;
   new BoardGame(canvas);
 }
