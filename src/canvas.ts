@@ -3,10 +3,32 @@ type Resource = (typeof resources)[number];
 
 const HEX_SIZE = 70;
 
+function cube_round({ q, r, s }: { q: number; r: number; s: number }) {
+  // https://www.redblobgames.com/grids/hexagons/#rounding
+  let q_rounded = Math.round(q);
+  let r_rounded = Math.round(r);
+  let s_rounded = Math.round(s);
+
+  const q_diff = Math.abs(q_rounded - q);
+  const r_diff = Math.abs(r_rounded - r);
+  const s_diff = Math.abs(s_rounded - s);
+
+  if (q_diff > r_diff && q_diff > s_diff) {
+    q_rounded = -r_rounded - s_rounded;
+  } else if (r_diff > s_diff) {
+    r_rounded = -q_rounded - s_rounded;
+  } else {
+    s_rounded = -q_rounded - r_rounded;
+  }
+
+  return { q: q_rounded, r: r_rounded, s: s_rounded };
+}
+
 function get_hex_coords(x: number, y: number, size: number) {
   const q = ((Math.sqrt(3) / 3) * x + (-1 / 3) * y) / size;
   const r = ((2 / 3) * y) / size;
-  return { q, r };
+  const { q: q_rounded, r: r_rounded } = cube_round({ q, r, s: -q - r });
+  return { q: q_rounded, r: r_rounded };
 }
 
 class PointyHexTile {
@@ -35,10 +57,19 @@ class ResourceTile extends PointyHexTile {
   public resource: Resource;
   public number: number;
 
-  constructor(resource: Resource, number: number, q: number, r: number, s: number) {
+  constructor(q: number, r: number, s: number) {
     super(q, r, s);
-    this.resource = resource;
-    this.number = number;
+    this.resource = this.getRandomResource();
+    this.number = this.getRandomNumber();
+  }
+
+  private getRandomResource() {
+    const randomResource = Math.floor(Math.random() * resources.length);
+    return resources[randomResource];
+  }
+
+  private getRandomNumber() {
+    return Math.floor(Math.random() * 11) + 2;
   }
 }
 
@@ -77,6 +108,7 @@ class BoardGame {
   private width: number;
   private height: number;
   private tiles: ResourceTile[];
+  private mousePosition: { x: number; y: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.assetManager = new AssetManager();
@@ -93,51 +125,74 @@ class BoardGame {
 
   private async initializeGame() {
     await this.loadAssets();
+
+    this.canvas.addEventListener("mousemove", (event) => {
+      const rect = this.canvas.getBoundingClientRect();
+      this.mousePosition = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
+      this.drawBoard();
+    });
+
+    this.canvas.addEventListener("mouseleave", () => {
+      this.mousePosition = null;
+      this.drawBoard();
+    });
+
     this.drawBoard();
   }
 
   private createGrid() {
     const tiles: ResourceTile[] = [];
-
+    const radius = 2;
     // stare hard at the diagram here: https://www.redblobgames.com/grids/hexagons/#coordinates-cube
-    for (let r = -2; r <= 2; r++) {
-      for (let q = -2; q <= 2; q++) {
+    for (let r = -radius; r <= radius; r++) {
+      for (let q = -radius; q <= radius; q++) {
         const s = -q - r;
-        if (Math.abs(s) <= 2) {
-          const resource = this.getRandomResource();
-          const number = this.getRandomNumber();
-          tiles.push(new ResourceTile(resource, number, q, r, s));
+        if (Math.abs(s) <= radius) {
+          tiles.push(new ResourceTile(q, r, s));
         }
       }
     }
-
     return tiles;
   }
 
-  private getRandomResource() {
-    const randomResource = Math.floor(Math.random() * resources.length);
-    return resources[randomResource];
-  }
-
-  private getRandomNumber() {
-    return Math.floor(Math.random() * 11) + 2;
+  private findTileAt(x: number, y: number): ResourceTile | undefined {
+    for (const tile of this.tiles) {
+      const [tileX, tileY] = tile.get2DCoords();
+      const distance = Math.sqrt((x - tileX) ** 2 + (y - tileY) ** 2);
+      if (distance < HEX_SIZE) {
+        return tile;
+      }
+    }
+    return undefined;
   }
 
   private drawBoard() {
     this.drawBackground();
-    [...this.tiles].forEach((tile) => {
+
+    const mouseOverTile =
+      this.mousePosition &&
+      this.findTileAt(
+        this.mousePosition.x - this.width / 2,
+        this.mousePosition.y - this.height / 2
+      );
+    this.tiles.forEach((tile) => {
       const [x, y] = tile.get2DCoords();
       // const asset = this.assetManager.getAsset(`${tile.resource}tile`);
+      const highlight = mouseOverTile === tile;
       const colorMap = {
-        wood: "brown",
-        brick: "red",
-        sheep: "green",
-        wheat: "yellow",
-        ore: "grey",
-        desert: "orange",
+        wood: "#378805",
+        brick: "#8B4513",
+        sheep: "#00FF00",
+        wheat: "#FFD700",
+        ore: "#808080",
+        desert: "#F5DEB3",
       };
+
       drawHexagon(this.ctx, this.width / 2 + x, this.height / 2 + y, HEX_SIZE, {
-        fill: colorMap[tile.resource],
+        fill: colorMap[tile.resource] + (highlight ? "CC" : "FF"),
       });
       // draw some text in the middle of the hexagon with coordinates
       this.ctx.fillStyle = "black";
