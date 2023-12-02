@@ -1,8 +1,6 @@
 const resources = ["wood", "brick", "sheep", "wheat", "ore", "desert"] as const;
 type Resource = (typeof resources)[number];
 
-const HEX_SIZE = 70;
-
 function cube_round({ q, r, s }: { q: number; r: number; s: number }) {
   // https://www.redblobgames.com/grids/hexagons/#rounding
   let q_rounded = Math.round(q);
@@ -33,9 +31,9 @@ function get_hex_coords(x: number, y: number, size: number) {
 
 class PointyHexTile {
   private cubeCoords: { q: number; r: number; s: number };
-  private size: number;
+  public size: number;
 
-  constructor(q: number, r: number, s: number, size = HEX_SIZE) {
+  constructor(q: number, r: number, s: number, size: number) {
     this.cubeCoords = { q, r, s };
     this.size = size;
   }
@@ -57,8 +55,8 @@ class ResourceTile extends PointyHexTile {
   public resource: Resource;
   public number: number;
 
-  constructor(q: number, r: number, s: number) {
-    super(q, r, s);
+  constructor(q: number, r: number, s: number, size: number) {
+    super(q, r, s, size);
     this.resource = this.getRandomResource();
     this.number = this.getRandomNumber();
   }
@@ -104,9 +102,10 @@ class AssetManager {
 class BoardGame {
   private assetManager: AssetManager;
   private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
-  private width: number;
-  private height: number;
+  private ctx!: CanvasRenderingContext2D;
+  private width!: number;
+  private height!: number;
+  private tileSize!: number;
   private tiles: ResourceTile[];
   private mouse: { x: number; y: number } | null = null;
 
@@ -114,10 +113,7 @@ class BoardGame {
     this.assetManager = new AssetManager();
     this.loadAssets();
     this.canvas = canvas;
-    this.ctx = setupCanvas(canvas);
-    const dpr = window.devicePixelRatio || 1;
-    this.width = canvas.width / dpr;
-    this.height = canvas.height / dpr;
+    this.setupCanvasScaling();
     this.tiles = this.createGrid();
 
     this.initializeGame();
@@ -140,6 +136,12 @@ class BoardGame {
       this.drawBoard();
     });
 
+    window.addEventListener("resize", () => {
+      this.setupCanvasScaling();
+      this.updateAllTileSize();
+      this.drawBoard();
+    });
+
     this.drawBoard();
   }
 
@@ -151,7 +153,7 @@ class BoardGame {
       for (let q = -radius; q <= radius; q++) {
         const s = -q - r;
         if (Math.abs(s) <= radius) {
-          tiles.push(new ResourceTile(q, r, s));
+          tiles.push(new ResourceTile(q, r, s, this.tileSize));
         }
       }
     }
@@ -162,11 +164,33 @@ class BoardGame {
     for (const tile of this.tiles) {
       const [tileX, tileY] = tile.get2DCoords();
       const distance = Math.sqrt((x - tileX) ** 2 + (y - tileY) ** 2);
-      if (distance < HEX_SIZE) {
+      if (distance < this.tileSize) {
         return tile;
       }
     }
     return undefined;
+  }
+
+  private setupCanvasScaling() {
+    this.canvas.height = window.innerHeight;
+    this.canvas.width = window.innerWidth;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = this.canvas.getBoundingClientRect();
+    this.canvas.width = rect.width * dpr;
+    this.canvas.height = rect.height * dpr;
+    const ctx = this.canvas.getContext("2d")!;
+    ctx.scale(dpr, dpr);
+    this.ctx = ctx;
+
+    this.width = this.canvas.width / dpr;
+    this.height = this.canvas.height / dpr;
+    this.tileSize = 0.07 * this.width;
+  }
+
+  private updateAllTileSize() {
+    this.tiles.forEach((tile) => {
+      tile.size = this.tileSize;
+    });
   }
 
   private drawBoard() {
@@ -188,7 +212,7 @@ class BoardGame {
         desert: "#F5DEB3",
       };
 
-      drawHexagon(this.ctx, x, y, HEX_SIZE, {
+      drawHexagon(this.ctx, x, y, this.tileSize, {
         fill: colorMap[tile.resource] + (highlight ? "CC" : "FF"),
       });
       // draw some text in the middle of the hexagon with coordinates
@@ -264,16 +288,6 @@ function drawHexagon(
   }
 
   ctx.stroke();
-}
-
-function setupCanvas(canvas: HTMLCanvasElement) {
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
-  const ctx = canvas.getContext("2d")!;
-  ctx.scale(dpr, dpr);
-  return ctx;
 }
 
 export function init() {
