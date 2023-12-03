@@ -26,7 +26,7 @@ function getHexCoords(x: number, y: number, size: number) {
 	return { q: q_rounded, r: r_rounded };
 }
 
-type CubeCoordinate = { q: number; r: number; s: number };
+export type CubeCoordinate = { q: number; r: number; s: number };
 const vertexDirections = [
 	"north",
 	"northEast",
@@ -36,7 +36,7 @@ const vertexDirections = [
 	"northWest",
 ] as const;
 type VertexDirection = (typeof vertexDirections)[number];
-type VertexCoord = CubeCoordinate[];
+export type VertexCoord = CubeCoordinate[];
 const edgeDirections = [
 	"northEast",
 	"east",
@@ -45,8 +45,8 @@ const edgeDirections = [
 	"west",
 	"northWest",
 ] as const;
-type EdgeCoord = [CubeCoordinate, CubeCoordinate];
-type EdgeDirection = (typeof edgeDirections)[number];
+export type EdgeCoord = [CubeCoordinate, CubeCoordinate];
+export type EdgeDirection = (typeof edgeDirections)[number];
 
 const CUBE_DIRECTION_VECTORS: Record<EdgeDirection, CubeCoordinate> = {
 	northEast: { q: 1, r: -1, s: 0 },
@@ -56,6 +56,15 @@ const CUBE_DIRECTION_VECTORS: Record<EdgeDirection, CubeCoordinate> = {
 	west: { q: -1, r: 0, s: 1 },
 	northWest: { q: 0, r: -1, s: 1 },
 };
+
+export function vectorToDirection(from: CubeCoordinate, to: CubeCoordinate) {
+	return Object.entries(CUBE_DIRECTION_VECTORS).find(
+		([, vector]) =>
+			vector.q === to.q - from.q &&
+			vector.r === to.r - from.r &&
+			vector.s === to.s - from.s,
+	)?.[0] as EdgeDirection;
+}
 
 export function coordinatesAreEqual(a: CubeCoordinate, b: CubeCoordinate) {
 	return a.q === b.q && a.r === b.r && a.s === b.s;
@@ -82,8 +91,8 @@ export class PointyHexTile {
 		this.size = size;
 	}
 
-	public getCoords() {
-		return [this.cubeCoords.q, this.cubeCoords.r, this.cubeCoords.s];
+	get coords() {
+		return this.cubeCoords;
 	}
 
 	public get2DCoords() {
@@ -148,5 +157,15 @@ export class PointyHexTile {
 
 	public getEdgeCoords(direction: EdgeDirection): EdgeCoord {
 		return [this.cubeCoords, this.getNeighbourCoords(direction)];
+	}
+
+	public isNeighbour(other: PointyHexTile) {
+		for (const direction of edgeDirections) {
+			const neighbourCoords = this.getNeighbourCoords(direction);
+			if (coordinatesAreEqual(neighbourCoords, other.coords)) {
+				return true;
+			}
+		}
+		return false;
 	}
 }

@@ -157,4 +157,14 @@ describe("PointyHexTile", () => {
 			),
 		).toBe(false);
 	});
+
+	test("isNeighbour", () => {
+		const origin = new PointyHexTile(0, 0, 0, 1);
+		const northEast = new PointyHexTile(1, -1, 0, 1);
+		const west = new PointyHexTile(-1, 0, 1, 1);
+
+		expect(origin.isNeighbour(northEast)).toBe(true);
+		expect(origin.isNeighbour(west)).toBe(true);
+		expect(northEast.isNeighbour(west)).toBe(false);
+	});
 });
