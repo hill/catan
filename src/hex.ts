@@ -48,6 +48,15 @@ const edgeDirections = [
 type EdgeCoord = [CubeCoordinate, CubeCoordinate];
 type EdgeDirection = (typeof edgeDirections)[number];
 
+const CUBE_DIRECTION_VECTORS: Record<EdgeDirection, CubeCoordinate> = {
+	northEast: { q: 1, r: -1, s: 0 },
+	east: { q: 1, r: 0, s: -1 },
+	southEast: { q: 0, r: 1, s: -1 },
+	southWest: { q: -1, r: 1, s: 0 },
+	west: { q: -1, r: 0, s: 1 },
+	northWest: { q: 0, r: -1, s: 1 },
+};
+
 export function coordinatesAreEqual(a: CubeCoordinate, b: CubeCoordinate) {
 	return a.q === b.q && a.r === b.r && a.s === b.s;
 }
@@ -87,20 +96,12 @@ export class PointyHexTile {
 
 	public getNeighbourCoords(direction: EdgeDirection) {
 		const { q, r, s } = this.cubeCoords;
-		switch (direction) {
-			case "northEast":
-				return { q: q + 1, r: r - 1, s };
-			case "east":
-				return { q: q + 1, r, s: s - 1 };
-			case "southEast":
-				return { q, r: r + 1, s: s - 1 };
-			case "southWest":
-				return { q: q - 1, r: r + 1, s };
-			case "west":
-				return { q: q - 1, r, s: s + 1 };
-			case "northWest":
-				return { q, r: r - 1, s: s + 1 };
-		}
+		const {
+			q: q_offset,
+			r: r_offset,
+			s: s_offset,
+		} = CUBE_DIRECTION_VECTORS[direction];
+		return { q: q + q_offset, r: r + r_offset, s: s + s_offset };
 	}
 
 	public getAllVertexCoords(): Record<VertexDirection, VertexCoord> {
