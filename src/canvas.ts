@@ -1,16 +1,54 @@
 import { PointyHexTile, vectorToDirection } from "./hex";
+import shapes, {
+	Circle,
+	Drawable,
+	PointyHexagon as PointyHexagonShape,
+	Rectangle,
+} from "./shapes";
 
 const resources = ["wood", "brick", "sheep", "wheat", "ore", "desert"] as const;
 type Resource = (typeof resources)[number];
 
-class ResourceTile extends PointyHexTile {
+const degToRad = (deg: number) => (deg * Math.PI) / 180;
+
+interface HasShape {
+	shape: Drawable;
+}
+
+interface MouseHandler {
+	isMouseOver: boolean;
+	onMouseIn(): void;
+	onMouseOut(): void;
+	onClick(): void;
+	shape: Drawable;
+}
+
+class ResourceTile extends PointyHexTile implements HasShape, MouseHandler {
+	public isMouseOver = false;
 	public resource: Resource;
 	public number: number;
+	public shape: PointyHexagonShape;
 
 	constructor(q: number, r: number, s: number, size: number) {
 		super(q, r, s, size);
 		this.resource = this.getRandomResource();
 		this.number = this.getRandomNumber();
+		const [x, y] = this.get2DCoords();
+		const colorMap = {
+			wood: "#378805",
+			brick: "#8B4513",
+			sheep: "#00FF00",
+			wheat: "#FFD700",
+			ore: "#808080",
+			desert: "#F5DEB3",
+		};
+		this.shape = new shapes.PointyHexagon(
+			x,
+			y,
+			size,
+			colorMap[this.resource],
+			"black",
+		);
 	}
 
 	private getRandomResource() {
@@ -21,14 +59,24 @@ class ResourceTile extends PointyHexTile {
 	private getRandomNumber() {
 		return Math.floor(Math.random() * 11) + 2;
 	}
+
+	public onClick() {}
+
+	public onMouseIn() {
+		this.shape;
+	}
+
+	public onMouseOut() {}
 }
 
 class PlaceholderTile extends PointyHexTile {}
 
 type GameTile = ResourceTile | PlaceholderTile;
 
-class Road {
+class Road implements HasShape, MouseHandler {
+	public isMouseOver = false;
 	public tiles: [GameTile, GameTile];
+	public shape: Rectangle;
 
 	constructor(tiles: [GameTile, GameTile]) {
 		if (!tiles[0].isNeighbour(tiles[1])) {
@@ -36,6 +84,26 @@ class Road {
 		}
 
 		this.tiles = tiles;
+
+		const TILE_SIZE = tiles[0].size; // TODO: this is a hack
+		const ROAD_WIDTH = 10;
+
+		this.shape = new shapes.Rectangle(
+			-(TILE_SIZE / 2),
+			-(ROAD_WIDTH / 2),
+			TILE_SIZE,
+			ROAD_WIDTH,
+			"black",
+			this.angle,
+		);
+	}
+
+	public draw(ctx: CanvasRenderingContext2D) {
+		const [x, y] = this.get2DCoords();
+		ctx.save();
+		ctx.translate(x, y);
+		this.shape.draw(ctx);
+		ctx.restore();
 	}
 
 	get angle() {
@@ -51,7 +119,7 @@ class Road {
 			northWest: 330,
 		};
 
-		return angleMap[direction];
+		return degToRad(angleMap[direction]);
 	}
 
 	public get2DCoords() {
@@ -60,10 +128,18 @@ class Road {
 		const [tile2X, tile2Y] = tile2.get2DCoords();
 		return [(tile1X + tile2X) / 2, (tile1Y + tile2Y) / 2];
 	}
+
+	public onClick() {}
+
+	public onMouseIn() {}
+
+	public onMouseOut() {}
 }
 
-class Settlement {
+class Settlement implements HasShape, MouseHandler {
+	public isMouseOver = false;
 	public tiles: [GameTile, GameTile, GameTile];
+	public shape: Circle;
 
 	constructor(tiles: [GameTile, GameTile, GameTile]) {
 		// the tiles must be neighbors of each other
@@ -76,6 +152,10 @@ class Settlement {
 		}
 
 		this.tiles = tiles;
+		const [x, y] = this.get2DCoords();
+		const TILE_SIZE = tiles[0].size; // TODO: this is a hack
+		const r = TILE_SIZE / 6;
+		this.shape = new shapes.Circle(x, y, r, "black");
 	}
 
 	public get2DCoords() {
@@ -85,6 +165,12 @@ class Settlement {
 		const [tile3X, tile3Y] = tile3.get2DCoords();
 		return [(tile1X + tile2X + tile3X) / 3, (tile1Y + tile2Y + tile3Y) / 3];
 	}
+
+	public onClick() {}
+
+	public onMouseIn() {}
+
+	public onMouseOut() {}
 }
 
 class AssetManager {
@@ -168,7 +254,30 @@ class BoardGame {
 				x: event.clientX - rect.left - this.width / 2, // transform to center of canvas
 				y: event.clientY - rect.top - this.height / 2,
 			};
+
+			for (const mouseListener of this.mouseListeners) {
+				const isOver = mouseListener.shape.contains(this.mouse.x, this.mouse.y);
+
+				if (isOver && !mouseListener.isMouseOver) {
+					mouseListener.isMouseOver = true;
+					mouseListener.onMouseIn();
+				} else if (!isOver && mouseListener.isMouseOver) {
+					mouseListener.isMouseOver = false;
+					mouseListener.onMouseOut();
+				}
+			}
+
 			this.drawBoard();
+		});
+
+		this.canvas.addEventListener("click", (event) => {
+			if (this.mouse) {
+				for (const mouseListener of this.mouseListeners) {
+					if (mouseListener.shape.contains(this.mouse.x, this.mouse.y)) {
+						mouseListener.onClick();
+					}
+				}
+			}
 		});
 
 		this.canvas.addEventListener("mouseleave", () => {
@@ -209,15 +318,8 @@ class BoardGame {
 		return tiles;
 	}
 
-	private findTileAt(x: number, y: number): GameTile | undefined {
-		for (const tile of this.tiles) {
-			const [tileX, tileY] = tile.get2DCoords();
-			const distance = Math.sqrt((x - tileX) ** 2 + (y - tileY) ** 2);
-			if (distance < this.tileSize) {
-				return tile;
-			}
-		}
-		return undefined;
+	private get mouseListeners(): MouseHandler[] {
+		return [...this.roads, ...this.settlements, ...this.resourceTiles];
 	}
 
 	private setupCanvasScaling() {
@@ -248,67 +350,15 @@ class BoardGame {
 		this.ctx.save();
 		this.ctx.translate(this.width / 2, this.height / 2); // Translate to the center
 
-		const mouseOverTile =
-			this.mouse && this.findTileAt(this.mouse.x, this.mouse.y);
-
 		for (const tile of this.resourceTiles) {
-			const [x, y] = tile.get2DCoords();
-			// const asset = this.assetManager.getAsset(`${tile.resource}tile`);
-			const highlight = mouseOverTile === tile;
-			const colorMap = {
-				wood: "#378805",
-				brick: "#8B4513",
-				sheep: "#00FF00",
-				wheat: "#FFD700",
-				ore: "#808080",
-				desert: "#F5DEB3",
-			};
-
-			drawHexagon(this.ctx, x, y, this.tileSize, {
-				fill: colorMap[tile.resource] + (highlight ? "CC" : "FF"),
-			});
-			// draw some text in the middle of the hexagon with coordinates
-			this.ctx.fillStyle = "black";
-			this.ctx.font = "12px sans-serif";
-			this.ctx.textAlign = "center";
-			this.ctx.textBaseline = "middle";
-			this.ctx.fillText(`${tile.number}: ${Object.entries(tile.coords)}`, x, y);
+			tile.shape.draw(this.ctx);
 		}
-
 		for (const road of this.roads) {
-			const [x, y] = road.get2DCoords();
-			const angle = road.angle;
-			this.ctx.fillStyle = "black";
-			this.ctx.beginPath();
-			// draw a rectangle with angle
-			this.ctx.save();
-
-			this.ctx.translate(x, y);
-
-			const degToRad = (deg: number) => (deg * Math.PI) / 180;
-
-			this.ctx.rotate(degToRad(angle));
-			const ROAD_WIDTH = 10;
-			this.ctx.fillRect(
-				-this.tileSize / 2,
-				-(ROAD_WIDTH / 2),
-				this.tileSize,
-				ROAD_WIDTH,
-			);
-
-			this.ctx.restore();
-
-			this.ctx.fill();
+			road.draw(this.ctx);
 		}
-
 		for (const settlement of this.settlements) {
-			const [x, y] = settlement.get2DCoords();
-			this.ctx.fillStyle = "black";
-			this.ctx.beginPath();
-			this.ctx.arc(x, y, this.tileSize / 6, 0, 2 * Math.PI);
-			this.ctx.fill();
+			settlement.shape.draw(this.ctx);
 		}
-
 		this.ctx.restore();
 	}
 
@@ -327,54 +377,6 @@ class BoardGame {
 			["deserttile", "/assets/tile/desert.png"],
 		]);
 	}
-}
-
-function drawHexagon(
-	ctx: CanvasRenderingContext2D,
-	x: number,
-	y: number,
-	size: number,
-	{
-		stroke = "black",
-		fill = "white",
-		asset,
-	}: {
-		stroke?: string;
-		fill?: string;
-		asset?: HTMLImageElement;
-	},
-) {
-	ctx.beginPath();
-	for (let side = 0; side < 7; side++) {
-		// Start at an angle of 30 degrees (π/6 radians) for a pointy top
-		const angle = ((2 * Math.PI) / 6) * side + Math.PI / 6;
-		const vertexX = x + size * Math.cos(angle);
-		const vertexY = y + size * Math.sin(angle);
-		if (side === 0) {
-			ctx.moveTo(vertexX, vertexY);
-		} else {
-			ctx.lineTo(vertexX, vertexY);
-		}
-	}
-	ctx.closePath();
-	ctx.strokeStyle = stroke;
-	ctx.fillStyle = fill;
-	ctx.fill();
-	if (asset) {
-		ctx.save();
-		ctx.clip();
-
-		const scaledSize = size * 2;
-		const imageX = x - scaledSize / 2;
-		const imageY = y - scaledSize / 2;
-
-		ctx.drawImage(asset, imageX, imageY, scaledSize, scaledSize);
-
-		ctx.restore();
-	} else {
-	}
-
-	ctx.stroke();
 }
 
 export function init() {
