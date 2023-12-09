@@ -27,7 +27,7 @@ function getHexCoords(x: number, y: number, size: number) {
 }
 
 export type CubeCoordinate = { q: number; r: number; s: number };
-const vertexDirections = [
+export const vertexDirections = [
 	"north",
 	"northEast",
 	"southEast",
@@ -37,7 +37,7 @@ const vertexDirections = [
 ] as const;
 type VertexDirection = (typeof vertexDirections)[number];
 export type VertexCoord = CubeCoordinate[];
-const edgeDirections = [
+export const edgeDirections = [
 	"northEast",
 	"east",
 	"southEast",
@@ -48,7 +48,7 @@ const edgeDirections = [
 export type EdgeCoord = [CubeCoordinate, CubeCoordinate];
 export type EdgeDirection = (typeof edgeDirections)[number];
 
-const CUBE_DIRECTION_VECTORS: Record<EdgeDirection, CubeCoordinate> = {
+export const CUBE_DIRECTION_VECTORS: Record<EdgeDirection, CubeCoordinate> = {
 	northEast: { q: 1, r: -1, s: 0 },
 	east: { q: 1, r: 0, s: -1 },
 	southEast: { q: 0, r: 1, s: -1 },

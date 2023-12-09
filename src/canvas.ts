@@ -1,4 +1,9 @@
-import { PointyHexTile, vectorToDirection } from "./hex";
+import {
+	CubeCoordinate,
+	PointyHexTile,
+	edgeDirections,
+	vectorToDirection,
+} from "./hex";
 import shapes, {
 	Circle,
 	Drawable,
@@ -209,9 +214,10 @@ class BoardGame {
 	private height!: number;
 	private mouse: { x: number; y: number } | null = null;
 	private tileSize!: number;
-	private tiles: GameTile[];
-	private roads: Road[] = [];
-	private settlements: Settlement[] = [];
+
+	private tileCoordMap = new Map<string, GameTile>();
+	private roadCoordMap = new Map<string, Road>();
+	private settlementCoordMap = new Map<string, Settlement>();
 
 	constructor(canvas: HTMLCanvasElement) {
 		this.assetManager = new AssetManager();
@@ -219,24 +225,52 @@ class BoardGame {
 		this.canvas = canvas;
 		this.setupCanvasScaling();
 		this.tiles = this.createGrid();
-		this.roads.push(new Road([this.resourceTiles[0], this.resourceTiles[4]]));
-		this.roads.push(new Road([this.resourceTiles[8], this.resourceTiles[9]]));
-		this.settlements.push(
-			new Settlement([
-				this.resourceTiles[0],
-				this.resourceTiles[1],
-				this.resourceTiles[4],
-			]),
-		);
-		this.settlements.push(
-			new Settlement([
-				this.resourceTiles[8],
-				this.resourceTiles[9],
-				this.resourceTiles[13],
-			]),
-		);
+		this.createAllLocations();
 
 		this.initializeGame();
+	}
+
+	private getCoordHash(coords: CubeCoordinate[]) {
+		return coords
+			.map(({ q, r, s }) => `${q},${r},${s}`)
+			.sort()
+			.join("|");
+	}
+
+	get tiles() {
+		return Array.from(this.tileCoordMap.values());
+	}
+
+	set tiles(tiles: GameTile[]) {
+		this.tileCoordMap = new Map(
+			tiles.map((tile) => [this.getCoordHash([tile.coords]), tile]),
+		);
+	}
+
+	get roads() {
+		return Array.from(this.roadCoordMap.values());
+	}
+
+	set roads(roads: Road[]) {
+		this.roadCoordMap = new Map(
+			roads.map((road) => [
+				this.getCoordHash(road.tiles.map((tile) => tile.coords)),
+				road,
+			]),
+		);
+	}
+
+	get settlements() {
+		return Array.from(this.settlementCoordMap.values());
+	}
+
+	set settlements(settlements: Settlement[]) {
+		this.settlementCoordMap = new Map(
+			settlements.map((settlement) => [
+				this.getCoordHash(settlement.tiles.map((tile) => tile.coords)),
+				settlement,
+			]),
+		);
 	}
 
 	get resourceTiles() {
@@ -318,6 +352,50 @@ class BoardGame {
 		return tiles;
 	}
 
+	private createAllLocations() {
+		const roads = [];
+		for (const tile of this.resourceTiles) {
+			for (const direction of edgeDirections) {
+				const coords = tile.getNeighbourCoords(direction);
+				const neighbour = this.getTileAtCoords(coords);
+				if (neighbour) {
+					const road = new Road([tile, neighbour]);
+					// TODO: If a road already exists between the two tiles, don't create a new one
+					if (
+						!this.roadCoordMap.has(
+							this.getCoordHash(road.tiles.map((tile) => tile.coords)),
+						)
+					) {
+						roads.push(new Road([tile, neighbour]));
+					}
+				}
+			}
+		}
+		this.roads = roads;
+
+		const settlements = [];
+		for (const tile of this.resourceTiles) {
+			const vertexCoords = tile.getAllVertexCoords();
+			for (const coords of Object.values(vertexCoords)) {
+				if (!this.settlementCoordMap.has(this.getCoordHash(coords))) {
+					const tiles = coords
+						.map((coord) => this.getTileAtCoords(coord))
+						.filter((tile) => tile !== undefined) as [
+						GameTile,
+						GameTile,
+						GameTile,
+					]; // TODO: remove cast
+					settlements.push(new Settlement(tiles));
+				}
+			}
+		}
+		this.settlements = settlements;
+	}
+
+	private getTileAtCoords(coords: CubeCoordinate) {
+		return this.tileCoordMap.get(this.getCoordHash([coords]));
+	}
+
 	private get mouseListeners(): MouseHandler[] {
 		return [...this.roads, ...this.settlements, ...this.resourceTiles];
 	}
@@ -384,5 +462,6 @@ export function init() {
 	const canvas = document.querySelector<HTMLCanvasElement>("#gameCanvas")!;
 	canvas.height = window.innerHeight;
 	canvas.width = window.innerWidth;
-	new BoardGame(canvas);
+	const game = new BoardGame(canvas);
+	console.log(game);
 }
